@@ -1,58 +1,82 @@
-name: Build Kernel Agate
+
+name: Build Kernel agate 4.19
 
 on:
   workflow_dispatch:
   push:
-    paths-ignore:
-      - '.github/**'
-      - 'README.md'
+    branches:
+      - lineage-24.0
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+        with:
+          ref: lineage-24.0
 
       - name: Install Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex git gnupg gperf imagemagick libssl-dev libxml2-utils lzop npm pngcrush python3 rsync schedtool squashfs-tools xsltproc zip zlib1g-dev gcc-aarch64-linux-gnu
+          sudo apt update
 
-      - name: Setup Ccache
-        uses: Chocobo1/setup-ccache-action@v1
+          sudo apt install -y \
+            build-essential \
+            bc \
+            bison \
+            flex \
+            libssl-dev \
+            libelf-dev \
+            libncurses-dev \
+            gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi \
+            device-tree-compiler \
+            python3 \
+            zip \
+            git
 
-      - name: Build
+      - name: Setup Build Environment
         run: |
-          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.mk" \) -exec sed -i -E 's/-Werror[^[:space:]]*//g' {} +
-          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.mk" \) -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export CC=aarch64-linux-gnu-gcc
-          export USE_CCACHE=1
-          export KCFLAGS="-Wno-error"
-          export KBUILD_HOSTCFLAGS="-Wno-error"
-          mkdir -p out
-          make O=out agate_defconfig
-          make O=out -j$(nproc)
+          chmod +x build.sh
 
-      - name: AnyKernel3
+          echo "DEVICE=agate" >> $GITHUB_ENV
+          echo "DEFCONFIG=agate_defconfig" >> $GITHUB_ENV
+          echo "ARCH=arm64" >> $GITHUB_ENV
+          echo "IMAGE_NAME=Image.gz-dtb" >> $GITHUB_ENV
+
+      - name: Build Kernel
         run: |
-          git clone --depth=1 https://github.com/axl277/AnyKernel3
+          ./build.sh
+
+      - name: Clone AnyKernel3
+        run: |
+          git clone \
+            https://github.com/axl277/AnyKernel3.git \
+            AnyKernel3
+
+      - name: Prepare AnyKernel3
+        run: |
+          cp dist/Image.gz-dtb AnyKernel3/
+
           cd AnyKernel3
-          rm -rf .git .github README.md
-          sed -i 's/device.name1=/device.name1=agate/g' anykernel.sh
-          sed -i 's|block=.*;|block=auto;|g' anykernel.sh
-          sed -i 's|is_slot_device=.*;|is_slot_device=auto;|g' anykernel.sh
-          if [ -f "../out/arch/arm64/boot/Image.gz-dtb" ]; then cp "../out/arch/arm64/boot/Image.gz-dtb" .
-          elif [ -f "../out/arch/arm64/boot/Image.gz" ]; then cp "../out/arch/arm64/boot/Image.gz" .
-          elif [ -f "../out/arch/arm64/boot/Image" ]; then cp "../out/arch/arm64/boot/Image" .
-          else exit 1; fi
-          zip -r9 "../agate-kernel.zip" * -x README.md
-          cd ..
 
-      - uses: actions/upload-artifact@v4
+          zip -r9 ../Kernel-agate-4.19.zip . \
+            -x ".git/*" \
+            "README.md" \
+            "*placeholder*"
+
+      - name: Upload Kernel Image
+        uses: actions/upload-artifact@v4
         with:
-          name: agate-kernel-${{ github.ref_name }}
-          path: agate-kernel.zip
+          name: Kernel-Image-agate-4.19
+          path: dist/Image.gz-dtb
+
+      - name: Upload AnyKernel3 ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnyKernel3-agate-4.19
+          path: Kernel-agate-4.19.zip
