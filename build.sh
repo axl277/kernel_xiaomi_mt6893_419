@@ -1,55 +1,59 @@
 #!/bin/bash
-#
-# Compile script for kernel
-#
 
-# Date/Time
-SECONDS=0
-DATE=$(date '+%Y%m%d-%H%M')
+function compile() 
+{
+    export LC_ALL=C
+    export USE_CCACHE=1
+    ccache -M 100G
+    export ARCH=arm64
+    export KBUILD_BUILD_HOST=buildbot
+    export KBUILD_BUILD_USER=""
+    export DEVICE="chopin"
 
-# Device
-DEVICE="${1:-chopin}"
-DEFCONFIG="${DEVICE}_defconfig"
-ZIPNAME="Axlorin-OSS-${DEVICE}-${DATE}.zip"
+    # Process argument flags
+    INCLUDE_KSU=false
+    for arg in "$@"; do
+        case $arg in
+            -ksu) INCLUDE_KSU=true ;;
+        esac
+    done
 
-echo -e "Building for: $DEVICE\n"
+    # KernelSU Integration Logic
+    if [ "$INCLUDE_KSU" = true ] || [ -n "$KSU_URL" ]; then
+        echo "KSU setup URL detected or requested. Integrating KernelSU..."
+        if curl -LSs "$KSU_SCRIPT" | bash; then
+            echo "KernelSU successfully integrated."
+            ZIP_SUFFIX="KSU-"
+        else
+            echo "Failed to fetch or execute KSU setup script. Proceeding without KSU..."
+            ZIP_SUFFIX=""
+        fi
+    else
+        echo "No KSU URL provided and -ksu flag not set. Skipping KernelSU integration..."
+        ZIP_SUFFIX=""
+    fi
 
-# Ensure the toolchain is available
-TC_DIR="$HOME/toolchains/proton-clang"
-CURRENT_DIR=$(pwd)
-if [ ! -d "$TC_DIR" ]; then
-    mkdir -p "$HOME/toolchains"
-    cd "$HOME/toolchains"
-    git clone --depth=1 https://gitlab.com/LeCmnGend/proton-clang.git -b clang-15 proton-clang
-    cd "$CURRENT_DIR"
-fi
-export PATH="$TC_DIR/bin:$PATH"
+    mkdir -p out
 
-# Process options
-CLEAN_BUILD=false
-INCLUDE_KSU=false
-for arg in "$@"; do
-    case $arg in
-        -c) CLEAN_BUILD=true ;;
-    esac
-done
+    make LLVM=1 O=out ARCH=arm64 LLVM_IAS=1 CROSS_COMPILE="aarch64-linux-gnu-" chopin_defconfig
+    
+    make -j$(nproc --all) LLVM=1 O=out ARCH=arm64 LLVM_IAS=1 \
+        CROSS_COMPILE="aarch64-linux-gnu-" \
+        CROSS_COMPILE_ARM32="arm-linux-gnueabi-" \
+        HOSTLDFLAGS="-no-pie" \
+        Image.gz CONFIG_NO_ERROR_ON_MISMATCH=y 2>&1 | tee error.log
+}
 
-[ "$CLEAN_BUILD" = true ] && rm -rf out
+function zupload()
+{
+    if ! [ -d "AnyKernel" ]; then
+        git clone --depth=1 https://github.com/axl277/AnyKernel3 AnyKernel
+    fi
+    cp out/arch/arm64/boot/Image.gz AnyKernel/
+    cd AnyKernel
+    zip -r9 4.19-CloverseKernel-${ZIP_SUFFIX}${DEVICE}.zip * -x .git .github README.md "*.zip"
+    cd ..
+}
 
-# Compilation process
-mkdir -p out
-make O=out ARCH=arm64 $DEFCONFIG
-
-echo -e "\nStarting compilation...\n"
-if make -j$(nproc --all) O=out ARCH=arm64 CC="ccache clang" LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- Image.gz; then
-    echo -e "\nKernel compiled successfully! Zipping up...\n"
-    git clone -q --depth=1 https://github.com/axl277/AnyKernel3 AnyKernel3
-    cp out/arch/arm64/boot/Image.gz AnyKernel3
-    rm -rf *zip out/arch/arm64/boot
-    (cd AnyKernel3 && zip -r9 "../$ZIPNAME" * -x '*.git*' README.md *placeholder)
-    rm -rf AnyKernel3
-    echo -e "\nCompleted in $((SECONDS / 60)) minute(s) and $((SECONDS % 60)) second(s)!"
-    echo "Zip: $ZIPNAME"
-else
-    echo -e "\nCompilation failed!"
-fi
+compile "$@"
+zupload
