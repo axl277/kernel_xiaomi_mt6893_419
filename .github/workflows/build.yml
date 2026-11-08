@@ -1,11 +1,11 @@
 
-name: MT6893 Kernel 4.19 Build
+name: MT6893 Kernel 4.19 - LLVM 18
 
 on:
   workflow_dispatch:
     inputs:
       clean_build:
-        description: Clean previous build
+        description: Clean build
         required: true
         type: boolean
         default: true
@@ -15,25 +15,19 @@ permissions:
 
 jobs:
   build:
-    name: Build Kernel - agate
-    runs-on: ubuntu-22.04
+    name: Build agate - Kernel 4.19
+    runs-on: ubuntu-24.04
     timeout-minutes: 360
 
     steps:
-      # ====================================
-      # Checkout source
-      # ====================================
-
-      - name: Checkout Kernel Source
+      # Checkout kernel
+      - name: Checkout Kernel
         uses: actions/checkout@v4
         with:
           ref: lineage-24.0
           fetch-depth: 1
 
-      # ====================================
-      # Install dependencies
-      # ====================================
-
+      # Dependencies
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -44,7 +38,6 @@ jobs:
             bison \
             flex \
             git \
-            curl \
             zip \
             unzip \
             python3 \
@@ -52,48 +45,39 @@ jobs:
             libssl-dev \
             libelf-dev \
             libncurses-dev \
+            device-tree-compiler \
+            clang-18 \
+            lld-18 \
+            llvm-18 \
+            llvm-18-tools \
             gcc-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabi \
-            device-tree-compiler
+            gcc-arm-linux-gnueabi
 
-      # ====================================
-      # Setup toolchain
-      # ====================================
-
-      - name: Setup Proton Clang 15
+      # Verify LLVM
+      - name: Verify LLVM 18
         run: |
-          mkdir -p "$HOME/toolchains"
+          clang-18 --version
+          ld.lld-18 --version
+          llvm-ar-18 --version
 
-          git clone --depth=1 \
-            -b clang-15 \
-            https://gitlab.com/LeCmnGend/proton-clang.git \
-            "$HOME/toolchains/proton-clang"
-
-          echo "$HOME/toolchains/proton-clang/bin" >> "$GITHUB_PATH"
-
-          clang --version || true
-
-      # ====================================
       # Check source
-      # ====================================
-
-      - name: Check Kernel Configuration
+      - name: Check Defconfig
         run: |
-          echo "Checking agate_defconfig..."
-
           test -f arch/arm64/configs/agate_defconfig
 
-          echo "Defconfig found."
+          echo "agate_defconfig found"
 
-          grep -n "ksm_flock" \
-            include/linux/keyslot-manager.h \
-            block/blk-crypto.c || true
+      # Setup ccache
+      - name: Setup Ccache
+        run: |
+          mkdir -p "$HOME/.ccache"
+          ccache -M 100G
+          ccache -s
 
-      # ====================================
       # Build kernel
-      # ====================================
-
       - name: Compile Kernel
+        id: compile
+        continue-on-error: true
         run: |
           chmod +x build.sh
 
@@ -103,10 +87,23 @@ jobs:
             ./build.sh agate
           fi
 
-      # ====================================
-      # Checkout AnyKernel3
-      # ====================================
+      # Upload build log even on failure
+      - name: Upload Build Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agate-build-log
+          path: |
+            error.log
+          if-no-files-found: ignore
+          retention-days: 14
 
+      # Stop if compilation failed
+      - name: Check Build Status
+        if: steps.compile.outcome == 'failure'
+        run: exit 1
+
+      # Clone your AnyKernel3
       - name: Clone AnyKernel3
         run: |
           git clone --depth=1 \
@@ -115,52 +112,42 @@ jobs:
 
           test -f AnyKernel3/anykernel.sh
 
-      # ====================================
-      # Package kernel
-      # ====================================
-
-      - name: Package AnyKernel3
+      # Package
+      - name: Package Kernel
         run: |
           cp dist/Image.gz AnyKernel3/Image.gz
 
           cd AnyKernel3
 
           zip -r9 \
-            ../Kernel-agate-4.19.zip \
+            ../Kernel-agate-4.19-LLVM18.zip \
             . \
             -x ".git/*" \
+               ".github/*" \
                "README.md" \
                "*placeholder*"
 
           cd ..
 
-          sha256sum Kernel-agate-4.19.zip \
-            > Kernel-agate-4.19.zip.sha256
+          sha256sum Kernel-agate-4.19-LLVM18.zip \
+            > Kernel-agate-4.19-LLVM18.zip.sha256
 
-      # ====================================
-      # Upload kernel image
-      # ====================================
-
+      # Upload image
       - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-Image-agate-4.19
+          name: agate-kernel-image
           path: |
             dist/Image.gz
             dist/Image.gz.sha256
-          if-no-files-found: error
           retention-days: 14
 
-      # ====================================
-      # Upload AnyKernel3
-      # ====================================
-
-      - name: Upload AnyKernel3 ZIP
+      # Upload ZIP
+      - name: Upload AnyKernel3
         uses: actions/upload-artifact@v4
         with:
-          name: AnyKernel3-agate-4.19
+          name: agate-AnyKernel3-LLVM18
           path: |
-            Kernel-agate-4.19.zip
-            Kernel-agate-4.19.zip.sha256
-          if-no-files-found: error
+            Kernel-agate-4.19-LLVM18.zip
+            Kernel-agate-4.19-LLVM18.zip.sha256
           retention-days: 14
