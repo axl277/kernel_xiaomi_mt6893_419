@@ -1,52 +1,72 @@
-#!/bin/bash
 
-DEVICE="agate"
-DEFCONFIG="${DEVICE}_defconfig"
-KERNEL_DIR=$(pwd)
-OUT_DIR="${KERNEL_DIR}/out"
-JOBS=$(nproc)
-ANYKERNEL_REPO="https://github.com/axl277/AnyKernel3"
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
+#!/usr/bin/env bash
+set -euo pipefail
 
-if command -v ccache >/dev/null 2>&1; then
-    export USE_CCACHE=1
-    export CCACHE_EXEC=$(which ccache)
-fi
+# ==============================
+# Kernel build configuration
+# ==============================
 
-export ARCH=arm64
-export SUBARCH=arm64
-export CROSS_COMPILE=aarch64-linux-gnu-
-export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-export CC=aarch64-linux-gnu-gcc
+DEVICE="${DEVICE:-agate}"
+ARCH="${ARCH:-arm64}"
+DEFCONFIG="${DEFCONFIG:-agate_defconfig}"
+OUT_DIR="${OUT_DIR:-out}"
 
-sed -i 's/-Werror//g' Makefile 2>/dev/null || true
+# Toolchain GCC
+CROSS_COMPILE="${CROSS_COMPILE:-aarch64-linux-gnu-}"
+CROSS_COMPILE_ARM32="${CROSS_COMPILE_ARM32:-arm-linux-gnueabi-}"
 
-rm -rf ${OUT_DIR}
-mkdir -p ${OUT_DIR}
+# Kernel image output
+IMAGE_NAME="${IMAGE_NAME:-Image.gz-dtb}"
 
-make O=${OUT_DIR} ARCH=${ARCH} ${DEFCONFIG}
-make O=${OUT_DIR} ARCH=${ARCH} -j${JOBS}
+# ==============================
+# Build kernel
+# ==============================
 
-IMAGE_FILE=""
-if [ -f "${OUT_DIR}/arch/arm64/boot/Image.gz-dtb" ]; then
-    IMAGE_FILE="${OUT_DIR}/arch/arm64/boot/Image.gz-dtb"
-elif [ -f "${OUT_DIR}/arch/arm64/boot/Image.gz" ]; then
-    IMAGE_FILE="${OUT_DIR}/arch/arm64/boot/Image.gz"
-elif [ -f "${OUT_DIR}/arch/arm64/boot/Image" ]; then
-    IMAGE_FILE="${OUT_DIR}/arch/arm64/boot/Image"
-fi
+echo "================================"
+echo "Building kernel for ${DEVICE}"
+echo "Kernel architecture: ${ARCH}"
+echo "Defconfig: ${DEFCONFIG}"
+echo "================================"
 
-if [ -n "$IMAGE_FILE" ]; then
-    git clone --depth=1 ${ANYKERNEL_REPO} AnyKernel3
-    cd AnyKernel3
-    rm -rf .git .github README.md
-    sed -i 's/device.name1=/device.name1=agate/g' anykernel.sh
-    sed -i 's|block=.*;|block=auto;|g' anykernel.sh
-    sed -i 's|is_slot_device=.*;|is_slot_device=auto;|g' anykernel.sh
-    cp "$IMAGE_FILE" .
-    ZIP_NAME="${DEVICE}-kernel-${BRANCH}-$(date +%Y%m%d).zip"
-    zip -r9 "../${ZIP_NAME}" * -x README.md
-    echo "${ZIP_NAME}"
-else
+if [[ ! -f "arch/arm64/configs/${DEFCONFIG}" ]]; then
+    echo "ERROR: Defconfig tidak ditemukan:"
+    echo "arch/arm64/configs/${DEFCONFIG}"
+    echo ""
+    echo "Defconfig yang tersedia:"
+    find arch/arm64/configs -maxdepth 1 -name '*agate*'
     exit 1
 fi
+
+mkdir -p "${OUT_DIR}"
+
+# Generate defconfig
+make O="${OUT_DIR}" \
+    ARCH="${ARCH}" \
+    "${DEFCONFIG}"
+
+# Compile kernel
+make -j"$(nproc)" O="${OUT_DIR}" \
+    ARCH="${ARCH}" \
+    CROSS_COMPILE="${CROSS_COMPILE}" \
+    CROSS_COMPILE_ARM32="${CROSS_COMPILE_ARM32}" \
+    "${IMAGE_NAME}"
+
+# Check output
+if [[ ! -f "${OUT_DIR}/arch/arm64/boot/${IMAGE_NAME}" ]]; then
+    echo "ERROR: Kernel image tidak ditemukan!"
+    find "${OUT_DIR}/arch/arm64/boot" -maxdepth 2 -type f
+    exit 1
+fi
+
+echo ""
+echo "================================"
+echo "BUILD SUCCESSFUL"
+echo "================================"
+
+mkdir -p dist
+
+cp "${OUT_DIR}/arch/arm64/boot/${IMAGE_NAME}" \
+   "dist/${IMAGE_NAME}"
+
+echo "Kernel image:"
+echo "dist/${IMAGE_NAME}"
