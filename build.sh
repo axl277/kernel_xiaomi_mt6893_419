@@ -2,13 +2,20 @@
 
 function compile() 
 {
-    source ~/.bashrc && source ~/.profile
+    source ~/.bashrc && source ~/.profile 2>/dev/null || true
     export LC_ALL=C && export USE_CCACHE=1
     ccache -M 100G
     export ARCH=arm64
     export KBUILD_BUILD_HOST=buildbot
     export KBUILD_BUILD_USER="exerczz1"
     export DEVICE="Agate"
+
+    # Periksa dan clone KernelSU jika folder/link kosong atau belum ada Kconfig
+    if [ ! -f "drivers/kernelsu/Kconfig" ]; then
+        echo "KernelSU belum terunduh, mengunduh KernelSU..."
+        rm -rf drivers/kernelsu
+        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+    fi
 
     mkdir -p out
 
@@ -22,6 +29,11 @@ function compile()
 
 function zupload()
 {
+    if [ ! -f "out/arch/arm64/boot/Image.gz" ]; then
+        echo "Error: Image.gz tidak ditemukan, kompilasi gagal."
+        exit 1
+    fi
+
     if ! [ -d "AnyKernel" ]; then
         git clone --depth=1 https://github.com/exrcz1337/AnyKernel3 AnyKernel
     fi
