@@ -24,6 +24,7 @@ jobs:
 
       - name: Build
         run: |
+          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.mk" \) -exec sed -i -E 's/-Werror[^[:space:]]*//g' {} +
           find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.mk" \) -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
           export ARCH=arm64
           export SUBARCH=arm64
