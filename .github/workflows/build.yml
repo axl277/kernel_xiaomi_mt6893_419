@@ -19,9 +19,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick libssl-dev libxml-utils libxml2-utils lzop npm pngcrush python3 rsync schedtool squashfs-tools xsltproc zip zlib1g-dev gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
-      - uses: hendrikmueller/ccache-action@v1.2
-        with:
-          key: kernel-4.19-${{ github.ref_name }}
+      - name: Setup Ccache
+        uses: Chocobo1/setup-ccache-action@v1
 
       - name: Build
         run: |
