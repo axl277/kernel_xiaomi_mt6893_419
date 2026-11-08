@@ -10,7 +10,6 @@ function compile()
     export KBUILD_BUILD_USER=""
     export DEVICE="chopin"
 
-    # Process argument flags
     INCLUDE_KSU=false
     for arg in "$@"; do
         case $arg in
@@ -18,24 +17,24 @@ function compile()
         esac
     done
 
-    # KernelSU Integration Logic
+    ZIP_SUFFIX=""
     if [ "$INCLUDE_KSU" = true ] || [ -n "$KSU_URL" ]; then
-        echo "KSU setup URL detected or requested. Integrating KernelSU..."
+        echo "Integrating KernelSU..."
+        KSU_SCRIPT="${KSU_URL:-https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh}"
         if curl -LSs "$KSU_SCRIPT" | bash; then
             echo "KernelSU successfully integrated."
             ZIP_SUFFIX="KSU-"
         else
-            echo "Failed to fetch or execute KSU setup script. Proceeding without KSU..."
-            ZIP_SUFFIX=""
+            echo "Failed to integrate KernelSU!"
+            exit 1
         fi
     else
-        echo "No KSU URL provided and -ksu flag not set. Skipping KernelSU integration..."
-        ZIP_SUFFIX=""
+        echo "Skipping KernelSU integration..."
     fi
 
     mkdir -p out
 
-    make LLVM=1 O=out ARCH=arm64 LLVM_IAS=1 CROSS_COMPILE="aarch64-linux-gnu-" chopin_defconfig
+    make LLVM=1 O=out ARCH=arm64 LLVM_IAS=1 CROSS_COMPILE="aarch64-linux-gnu-" chopin_defconfig || exit 1
     
     make -j$(nproc --all) LLVM=1 O=out ARCH=arm64 LLVM_IAS=1 \
         CROSS_COMPILE="aarch64-linux-gnu-" \
@@ -46,6 +45,11 @@ function compile()
 
 function zupload()
 {
+    if [ ! -f "out/arch/arm64/boot/Image.gz" ]; then
+        echo "Error: Image.gz not found! Compilation failed."
+        exit 1
+    fi
+
     if ! [ -d "AnyKernel" ]; then
         git clone --depth=1 https://github.com/axl277/AnyKernel3 AnyKernel
     fi
