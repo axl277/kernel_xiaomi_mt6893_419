@@ -24,13 +24,14 @@ jobs:
 
       - name: Build
         run: |
-          sed -i 's/-Werror//g' Makefile || true
           find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.mk" \) -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
           export ARCH=arm64
           export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CC=aarch64-linux-gnu-gcc
           export USE_CCACHE=1
+          export KCFLAGS="-Wno-error"
+          export KBUILD_HOSTCFLAGS="-Wno-error"
           mkdir -p out
           make O=out agate_defconfig
           make O=out -j$(nproc)
