@@ -16,12 +16,16 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc flex bison libssl-dev libelf-dev ccache zip
+          sudo apt-get install -y \
+            build-essential bc flex bison libssl-dev libelf-dev ccache zip \
+            clang lld llvm \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            crossbuild-essential-arm64 crossbuild-essential-armhf
 
       - name: Run Build Script
         run: |
           chmod +x build.sh
-          ./build.sh chopin -ksu
+          ./build.sh -ksu
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
