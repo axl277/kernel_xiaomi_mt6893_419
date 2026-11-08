@@ -13,15 +13,19 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install Dependencies
+      - name: Install Clang 18 & Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc flex bison libssl-dev libelf-dev ccache zip
+          sudo apt-get install -y wget lsb-release software-properties-common gnupg
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 18
+          sudo apt-get install -y build-essential bc flex bison libssl-dev libelf-dev ccache zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi lld-18
 
       - name: Run Build Script
         run: |
           chmod +x build.sh
-          ./build.sh chopin -ksu
+          ./build.sh
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
