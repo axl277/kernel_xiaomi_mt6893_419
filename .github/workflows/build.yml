@@ -25,6 +25,7 @@ jobs:
       - name: Build
         run: |
           sed -i 's/-Werror//g' Makefile || true
+          find . -type f \( -name "Makefile" -o -name "Kbuild" -o -name "*.mk" \) -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
           export ARCH=arm64
           export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
